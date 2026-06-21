@@ -3431,25 +3431,50 @@ const GestaoUsuarios = () => {
               </div>
               <form className="p-8 space-y-4" onSubmit={async (e) => { 
                 e.preventDefault();
-                const formData = new FormData(e.currentTarget);
+                const form = e.currentTarget as HTMLFormElement;
+                const formData = new FormData(form);
                 const supabase = getSupabase();
-                if (!supabase) return;
 
-                const loadingToast = alert('Processando cadastro...');
-                
-                const { data, error } = await supabase.rpc('create_new_school_gestor', {
-                  p_school_name: formData.get('schoolName'),
-                  p_gestor_name: formData.get('name'),
-                  p_gestor_email: formData.get('email'),
-                  p_gestor_whatsapp: formData.get('whatsapp'),
-                  p_password: formData.get('password') || 'EduTec@2026'
-                });
+                if (!supabase) {
+                  alert('⚠️ Conexão com o banco de dados não disponível.\nVerifique as configurações do Supabase.');
+                  return;
+                }
 
-                if (error || (data && !data.success)) {
-                  alert('Erro ao cadastrar: ' + (error?.message || data?.error));
-                } else {
-                  alert('Usuário e Escola cadastrados com sucesso no Supabase!');
-                  setShowUserModal(false);
+                const submitBtn = form.querySelector('button[type="submit"]') as HTMLButtonElement;
+                if (submitBtn) {
+                  submitBtn.disabled = true;
+                  submitBtn.textContent = '⏳ Processando...';
+                }
+
+                try {
+                  const { data, error } = await supabase.rpc('create_new_school', {
+                    p_gestor_email: formData.get('email') as string,
+                    p_gestor_name: formData.get('name') as string,
+                    p_gestor_whatsapp: (formData.get('whatsapp') as string) || '',
+                    p_password: (formData.get('password') as string) || 'EduTec@2026',
+                    p_school_name: formData.get('schoolName') as string,
+                  });
+
+                  if (error) {
+                    // Erro retornado pela API do Supabase
+                    alert(`❌ Erro ao cadastrar a escola:\n${error.message}`);
+                  } else if (data && data.success === false) {
+                    // Erro retornado explicitamente pela função RPC
+                    alert(`❌ Não foi possível concluir o cadastro:\n${data.error || 'Ocorreu um erro desconhecido. Tente novamente.'}`);
+                  } else {
+                    // Sucesso: exibe mensagem, limpa o formulário e fecha o modal
+                    alert('✅ Escola e gestor cadastrados com sucesso!\nAs credenciais de acesso foram criadas.');
+                    form.reset();
+                    setShowUserModal(false);
+                  }
+                } catch (err: any) {
+                  // Erro inesperado (ex.: falha de rede)
+                  alert(`❌ Erro inesperado ao processar a requisição:\n${err.message || String(err)}`);
+                } finally {
+                  if (submitBtn) {
+                    submitBtn.disabled = false;
+                    submitBtn.textContent = 'Criar Conta e Enviar Convite';
+                  }
                 }
               }}>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
