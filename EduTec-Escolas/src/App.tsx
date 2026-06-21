@@ -1016,7 +1016,7 @@ const LandingPage = ({ onStartLogin }: { onStartLogin: () => void }) => {
   );
 };
 
-const Login = ({ onLogin, onBackToLanding }: { onLogin: (role: UserRole) => void; onBackToLanding: () => void }) => {
+const Login = ({ onLogin, onBackToLanding }: { onLogin: (user: User) => void; onBackToLanding: () => void }) => {
   const [credentials, setCredentials] = useState<Record<string, { login: string; pass: string }>>({
     ADMIN_GERAL: { login: '', pass: '' },
     DIRETOR: { login: '', pass: '' },
@@ -1106,26 +1106,63 @@ const Login = ({ onLogin, onBackToLanding }: { onLogin: (role: UserRole) => void
                 <Button 
                   variant="success" 
                   className="w-full py-3.5 sm:py-4 rounded-xl font-bold text-sm sm:text-base shadow-lg shadow-emerald-100 mt-2 sm:mt-4"
-                  onClick={() => {
+                  onClick={async () => {
                     const { login, pass } = credentials[role];
-                    const validCreds: Record<string, { login: string; pass: string }> = {
-                      ADMIN_GERAL: { login: 'raquelduarteadmi@gmail.com', pass: 'Joao@21226900' },
-                      DIRETOR: { login: 'lobotulher@teste.com', pass: '123456' },
-                      PROFESSOR: { login: 'professor@professor.com', pass: '123' },
-                      RESPONSAVEL: { login: 'responsavel@responsavel.com', pass: '123' },
-                    };
-
-                    const expected = validCreds[role];
-                    const cleanLogin = login.trim().toLowerCase();
+                    const cleanLogin = login.trim();
                     const cleanPass = pass.trim();
-                    
-                    const loginMatch = cleanLogin === expected.login.toLowerCase();
-                    const passMatch = cleanPass === expected.pass;
 
-                    if (loginMatch && passMatch) {
-                      onLogin(role);
-                    } else {
-                      alert(`Falha no Login!\nDigitado: ${cleanLogin}\nEsperado: ${expected.login}\nSenha correta? ${passMatch ? 'Sim' : 'Não'}`);
+                    if (!cleanLogin || !cleanPass) {
+                      alert('Por favor, insira o login/e-mail e a senha.');
+                      return;
+                    }
+
+                    const supabase = getSupabase();
+                    if (!supabase) {
+                      alert('Erro: Conexão com o Supabase não inicializada.');
+                      return;
+                    }
+
+                    try {
+                      const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+                        email: cleanLogin,
+                        password: cleanPass,
+                      });
+
+                      if (authError) {
+                        alert(`Erro na autenticação: ${authError.message}`);
+                        return;
+                      }
+
+                      if (!authData.user) {
+                        alert('Nenhum usuário retornado do Supabase.');
+                        return;
+                      }
+
+                      const { data: profileData, error: profileError } = await supabase
+                        .from('profiles')
+                        .select('name, role, whatsapp')
+                        .eq('id', authData.user.id)
+                        .single();
+
+                      if (profileError) {
+                        console.warn('Perfil não encontrado no banco, usando dados padrão:', profileError);
+                        onLogin({
+                          id: authData.user.id,
+                          name: authData.user.user_metadata?.name || authData.user.email?.split('@')[0] || 'Usuário',
+                          role: role,
+                          email: authData.user.email || cleanLogin,
+                        });
+                      } else {
+                        onLogin({
+                          id: authData.user.id,
+                          name: profileData.name || 'Usuário',
+                          role: profileData.role as UserRole,
+                          email: authData.user.email || cleanLogin,
+                          whatsapp: profileData.whatsapp || undefined,
+                        });
+                      }
+                    } catch (err: any) {
+                      alert(`Erro ao fazer login: ${err.message || err}`);
                     }
                   }}
                 >
@@ -4418,17 +4455,8 @@ export default function App() {
   const [view, setView] = useState<'landing' | 'login' | 'dashboard'>('landing');
   const [user, setUser] = useState<User | null>(null);
 
-  const handleLogin = (role: UserRole) => {
-    setUser({
-      id: '1',
-      name: role === 'ADMIN_GERAL' ? 'Raquel Duarte' :
-            role === 'DIRETOR' ? 'Ronaldo' : 
-            role === 'PROFESSOR' ? 'Prof. Ana Paula' : 
-            role === 'RESPONSAVEL' ? 'Sr. Marcos Silva' : 'Lucas Silva',
-      role,
-      email: role === 'ADMIN_GERAL' ? 'raquelduarteadmi@gmail.com' :
-             role === 'DIRETOR' ? 'lobotulher@teste.com' : 'user@edutecpro.com',
-    });
+  const handleLogin = (userData: User) => {
+    setUser(userData);
     setView('dashboard');
     console.log('Login bem-sucedido, mudando para dashboard');
   };
